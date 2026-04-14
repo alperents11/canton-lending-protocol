@@ -1,0 +1,84 @@
+module LendingFlow where
+
+template CollateralVault
+  with
+    owner   : Party
+    amount  : Decimal
+    vaultId : Text
+  where
+    signatory owner
+
+template LoanRequest
+  with
+    borrower         : Party
+    lender           : Party
+    amount           : Decimal
+    collateralAmount : Decimal
+    vaultCid         : ContractId CollateralVault
+    loanId           : Text
+  where
+    signatory borrower
+    observer  lender
+
+    choice Accept : ContractId LoanAgreement
+      controller lender
+      do
+        create LoanAgreement with
+          borrower         = borrower
+          lender           = lender
+          amount           = amount
+          collateralAmount = collateralAmount
+          vaultCid         = vaultCid
+          loanId           = loanId
+
+    choice Decline : ()
+      controller lender
+      do
+        pure ()
+
+template LoanAgreement
+  with
+    borrower         : Party
+    lender           : Party
+    amount           : Decimal
+    collateralAmount : Decimal
+    vaultCid         : ContractId CollateralVault
+    loanId           : Text
+  where
+    signatory lender, borrower
+
+    choice Repay : ()
+      controller borrower
+      do
+        pure ()
+
+    choice Liquidate : ()
+      controller lender
+      do
+        pure ()
+
+testLendingFlow : Script ()
+testLendingFlow = script do
+  alice <- allocateParty "Alice"
+  bob   <- allocateParty "Bob"
+
+  vaultCid <- submit alice do
+    createCmd CollateralVault with
+      owner   = alice
+      amount  = 1000.0
+      vaultId = "VAULT-001"
+
+  requestCid <- submit alice do
+    createCmd LoanRequest with
+      borrower         = alice
+      lender           = bob
+      amount           = 500.0
+      collateralAmount = 1000.0
+      vaultCid         = vaultCid
+      loanId           = "LOAN-001"
+
+  agreementCid <- submit bob do
+    exerciseCmd requestCid Accept
+
+  submit alice do
+    exerciseCmd agreementCid Repay
